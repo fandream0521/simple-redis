@@ -108,8 +108,8 @@ impl RespEncode for bool {
 // double: ",[<+|->]<integral>[.<fractional>][<E|e>[sign]<exponent>]\r\n"
 impl RespEncode for f64 {
     fn encode(self) -> Vec<u8> {
-        let ret = if self.abs() > 1e+8 {
-            format!(",{:.0e}\r\n", self)
+        let ret = if self.abs() > 1e+8 || self.abs() < 1e-8 {
+            format!(",{:e}\r\n", self)
         } else {
             format!(",{}\r\n", self)
         };
@@ -118,6 +118,7 @@ impl RespEncode for f64 {
 }
 
 // map: "%<number-of-entries>\r\n<key-1><value-1>...<key-n><value-n>"
+// only support simple string key
 impl RespEncode for Map {
     fn encode(self) -> Vec<u8> {
         let mut buff = Vec::with_capacity(16);
@@ -136,8 +137,132 @@ impl RespEncode for Set {
         let mut buff = Vec::with_capacity(16);
         buff.extend_from_slice(&format!("~{}\r\n", self.len()).into_bytes());
         for frame in self.0 {
-            buff.extend_from_slice(&frame.encode());
+            buff.extend_from_slice(&frame.1.encode());
         }
         buff
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simple_string_encode() {
+        let frame = SimpleString("OK".to_string());
+        assert_eq!(frame.encode(), b"+OK\r\n");
+    }
+
+    #[test]
+    fn test_simple_error_encode() {
+        let frame = SimpleError("Error message".to_string());
+        assert_eq!(frame.encode(), b"-Error message\r\n");
+    }
+
+    #[test]
+    fn test_integer_encode() {
+        let frame = 123;
+        assert_eq!(frame.encode(), b":+123\r\n");
+
+        let frame = -123;
+        assert_eq!(frame.encode(), b":-123\r\n");
+    }
+
+    #[test]
+    fn test_bulk_string_encode() {
+        let frame = BulkString(b"hello".to_vec());
+        assert_eq!(frame.encode(), b"$5\r\nhello\r\n");
+    }
+
+    #[test]
+    fn test_bulk_error_encode() {
+        let frame = BulkError("Error message".to_string());
+        assert_eq!(frame.encode(), b"!13\r\nError message\r\n");
+    }
+
+    #[test]
+    fn test_array_encode() {
+        let frame = Array(vec![
+            RespFrame::BulkString(BulkString(b"get".to_vec())),
+            RespFrame::BulkString(BulkString(b"hello".to_vec())),
+        ]);
+        assert_eq!(frame.encode(), b"*2\r\n$3\r\nget\r\n$5\r\nhello\r\n");
+    }
+
+    #[test]
+    fn test_null_bulk_string_encode() {
+        let frame = RespNullBulkString;
+        assert_eq!(frame.encode(), b"$-1\r\n");
+    }
+
+    #[test]
+    fn test_null_array_encode() {
+        let frame = RespNullArray;
+        assert_eq!(frame.encode(), b"*-1\r\n");
+    }
+
+    #[test]
+    fn test_null_encode() {
+        let frame = RespNull;
+        assert_eq!(frame.encode(), b"_\r\n");
+    }
+
+    #[test]
+    fn test_boolean_encode() {
+        let frame = true;
+        assert_eq!(frame.encode(), b"#t\r\n");
+
+        let frame = false;
+        assert_eq!(frame.encode(), b"#f\r\n");
+    }
+
+    #[test]
+    fn test_double_encode() {
+        let frame = 123.456;
+        assert_eq!(frame.encode(), b",123.456\r\n");
+
+        let frame = 123.0;
+        assert_eq!(frame.encode(), b",123\r\n");
+
+        let frame = 1.23456e+8;
+        assert_eq!(frame.encode(), b",1.23456e8\r\n");
+
+        let frame = 1.23456e-9;
+        assert_eq!(frame.encode(), b",1.23456e-9\r\n");
+    }
+
+    #[test]
+    fn test_map_encode() {
+        let mut map = BTreeMap::new();
+        map.insert(
+            "key1".to_string(),
+            RespFrame::BulkString(BulkString(b"value1".to_vec())),
+        );
+        map.insert(
+            "key2".to_string(),
+            RespFrame::BulkString(BulkString(b"value2".to_vec())),
+        );
+        let frame = Map(map);
+        assert_eq!(
+            frame.encode(),
+            b"%2\r\n+key1\r\n$6\r\nvalue1\r\n+key2\r\n$6\r\nvalue2\r\n"
+        );
+    }
+
+    #[test]
+    fn test_set_encode() {
+        let mut map = BTreeMap::new();
+        map.insert(
+            "key1".to_string(),
+            RespFrame::BulkString(BulkString(b"value1".to_vec())),
+        );
+        map.insert(
+            "key2".to_string(),
+            RespFrame::BulkString(BulkString(b"value2".to_vec())),
+        );
+        let frame = Set(map);
+        let encoded = frame.encode();
+        println!("{:?}", String::from_utf8_lossy(&encoded));
+        assert_eq!(encoded, b"~2\r\n$6\r\nvalue1\r\n$6\r\nvalue2\r\n");
     }
 }

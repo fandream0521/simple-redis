@@ -1,7 +1,10 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::BTreeMap,
+    hash::Hash,
     ops::{Deref, DerefMut},
 };
+
+use enum_dispatch::enum_dispatch;
 
 mod decode;
 mod encode;
@@ -28,6 +31,7 @@ mod encode;
 - bytes trait
 */
 
+#[enum_dispatch]
 pub trait RespEncode {
     fn encode(self) -> Vec<u8>;
 }
@@ -36,6 +40,8 @@ pub trait RespDecode {
     fn decode(data: &[u8]) -> Result<RespFrame, String>;
 }
 
+#[derive(Debug, PartialEq, PartialOrd)]
+#[enum_dispatch(RespEncode)]
 pub enum RespFrame {
     SimpleString(SimpleString),
     SimpleError(SimpleError),
@@ -53,30 +59,35 @@ pub enum RespFrame {
     Set(Set),
 }
 
-impl RespEncode for RespFrame {
-    fn encode(self) -> Vec<u8> {
-        todo!()
-    }
-}
-
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd)]
 pub struct SimpleString(String);
+
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd)]
 pub struct SimpleError(String);
 
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd)]
 pub struct BulkString(Vec<u8>);
 
+#[derive(Debug, PartialEq, PartialOrd)]
 pub struct Array(Vec<RespFrame>);
 
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd)]
 pub struct BulkError(String);
 
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd)]
 pub struct RespNull;
 
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd)]
 pub struct RespNullBulkString;
 
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd)]
 pub struct RespNullArray;
 
-pub struct Map(HashMap<String, RespFrame>);
+#[derive(Debug, PartialEq, PartialOrd)]
+pub struct Map(BTreeMap<String, RespFrame>);
 
-pub struct Set(HashSet<RespFrame>);
+#[derive(Debug, PartialEq, PartialOrd)]
+pub struct Set(BTreeMap<String, RespFrame>);
 
 // impl Deref and DerefMut for SimpleString, SimpleError, BulkString, Array, BulkError, Map, Set
 impl Deref for SimpleString {
@@ -120,7 +131,7 @@ impl Deref for BulkError {
 }
 
 impl Deref for Map {
-    type Target = HashMap<String, RespFrame>;
+    type Target = BTreeMap<String, RespFrame>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -128,7 +139,7 @@ impl Deref for Map {
 }
 
 impl Deref for Set {
-    type Target = HashSet<RespFrame>;
+    type Target = BTreeMap<String, RespFrame>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -232,14 +243,14 @@ impl From<&[u8]> for BulkError {
     }
 }
 
-impl From<HashMap<String, RespFrame>> for Map {
-    fn from(v: HashMap<String, RespFrame>) -> Self {
+impl From<BTreeMap<String, RespFrame>> for Map {
+    fn from(v: BTreeMap<String, RespFrame>) -> Self {
         Map(v)
     }
 }
 
-impl From<HashSet<RespFrame>> for Set {
-    fn from(v: HashSet<RespFrame>) -> Self {
+impl From<BTreeMap<String, RespFrame>> for Set {
+    fn from(v: BTreeMap<String, RespFrame>) -> Self {
         Set(v)
     }
 }
